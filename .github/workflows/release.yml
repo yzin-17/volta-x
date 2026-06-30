@@ -84,7 +84,9 @@ jobs:
         with:
           rustflags: ""
       - name: Add cargo-wix subcommand
-        run: cargo install --locked cargo-wix
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install --locked cargo-wix
       - name: Compile and package installer
         run: |
           cargo wix --nocapture --package volta --output target\wix\volta-windows.msi
@@ -114,7 +116,9 @@ jobs:
           target: aarch64-pc-windows-msvc
           rustflags: ""
       - name: Add cargo-wix subcommand
-        run: cargo install --locked cargo-wix
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install --locked cargo-wix
       - name: Compile and package installer
         run: |
           cargo wix --nocapture --package volta --target aarch64-pc-windows-msvc --output target\wix\volta-windows-arm.msi
