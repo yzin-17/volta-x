@@ -239,6 +239,28 @@ fn install_npm_bundled_sets_default_when_no_custom_npm_exists() {
 }
 
 #[test]
+fn install_npm_sets_default_when_no_custom_npm_exists() {
+    let s = sandbox()
+        .platform(&platform_with_node("8.9.10"))
+        .npm_available_versions(NPM_VERSION_INFO)
+        .distro_mocks::<NpmFixture>(&NPM_VERSION_FIXTURES)
+        .env("VOLTA_LOGLEVEL", "info")
+        .build();
+
+    assert_that!(
+        s.volta("install npm@4.5.6"),
+        execs()
+            .with_status(ExitCode::Success as i32)
+            .with_stdout_contains("[..]installed and set npm@4.5.6 as default[..]")
+    );
+
+    assert_eq!(
+        Sandbox::read_default_platform(),
+        platform_with_node_npm("8.9.10", "4.5.6")
+    );
+}
+
+#[test]
 fn install_npm_without_node_errors() {
     let s = sandbox()
         .npm_available_versions(NPM_VERSION_INFO)

@@ -159,7 +159,10 @@ impl Spec {
                 Some(version) => {
                     let npm = Npm::new(version.clone());
 
-                    if session.default_platform()?.is_some() {
+                    if session
+                        .default_platform()?
+                        .is_some_and(|platform| platform.npm.is_some())
+                    {
                         npm.ensure_fetched(session)?;
                         info_default_preserved(npm);
                         Ok(())
