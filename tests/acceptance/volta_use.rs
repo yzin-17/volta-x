@@ -60,7 +60,10 @@ fn directory_platform_json(root: &std::path::Path, platform: serde_json::Value) 
     platforms.insert(root.display().to_string(), platform);
 
     let mut contents = serde_json::Map::new();
-    contents.insert("platforms".to_string(), serde_json::Value::Object(platforms));
+    contents.insert(
+        "platforms".to_string(),
+        serde_json::Value::Object(platforms),
+    );
 
     serde_json::to_string_pretty(&serde_json::Value::Object(contents))
         .expect("directory platform JSON should serialize")
