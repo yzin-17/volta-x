@@ -1,6 +1,7 @@
 use crate::support::sandbox::{sandbox, Sandbox};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use serde_json::json;
 use test_support::matchers::execs;
 
 use volta_core::error::ExitCode;
@@ -20,54 +21,49 @@ fn platform_with_node_npm(node: &str, npm: &str) -> String {
 }
 
 fn directory_platform_for(root: &std::path::Path, node: &str) -> String {
-    format!(
-        r#"{{
-  "platforms": {{
-    "{}": {{
-      "node": "{}",
-      "pnpm": null,
-      "yarn": null
-    }}
-  }}
-}}"#,
-        root.display(),
-        node
+    directory_platform_json(
+        root,
+        json!({
+            "node": node,
+            "pnpm": null,
+            "yarn": null,
+        }),
     )
 }
 
 fn directory_platform_with_npm_for(root: &std::path::Path, node: &str, npm: &str) -> String {
-    format!(
-        r#"{{
-  "platforms": {{
-    "{}": {{
-      "node": "{}",
-      "npm": "{}",
-      "pnpm": null,
-      "yarn": null
-    }}
-  }}
-}}"#,
-        root.display(),
-        node,
-        npm
+    directory_platform_json(
+        root,
+        json!({
+            "node": node,
+            "npm": npm,
+            "pnpm": null,
+            "yarn": null,
+        }),
     )
 }
 
 fn directory_platform_npm_only_for(root: &std::path::Path, npm: &str) -> String {
-    format!(
-        r#"{{
-  "platforms": {{
-    "{}": {{
-      "node": null,
-      "npm": "{}",
-      "pnpm": null,
-      "yarn": null
-    }}
-  }}
-}}"#,
-        root.display(),
-        npm
+    directory_platform_json(
+        root,
+        json!({
+            "node": null,
+            "npm": npm,
+            "pnpm": null,
+            "yarn": null,
+        }),
     )
+}
+
+fn directory_platform_json(root: &std::path::Path, platform: serde_json::Value) -> String {
+    let mut platforms = serde_json::Map::new();
+    platforms.insert(root.display().to_string(), platform);
+
+    let mut contents = serde_json::Map::new();
+    contents.insert("platforms".to_string(), serde_json::Value::Object(platforms));
+
+    serde_json::to_string_pretty(&serde_json::Value::Object(contents))
+        .expect("directory platform JSON should serialize")
 }
 
 fn empty_directory_platforms() -> &'static str {
