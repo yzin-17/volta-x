@@ -10,7 +10,9 @@ use headers::{Expires, Header};
 use mockito::{self, mock, Matcher};
 use node_semver::Version;
 use test_support::{self, ok_or_panic, paths, paths::PathExt, process::ProcessBuilder};
-use volta_core::fs::{set_executable, symlink_file};
+use volta_core::fs::set_executable;
+#[cfg(unix)]
+use volta_core::fs::symlink_file;
 use volta_core::tool::{Node, Pnpm, Yarn};
 
 // version cache for node and yarn
@@ -135,6 +137,19 @@ impl ShimBuilder {
     }
 
     fn build(&self) {
+        #[cfg(windows)]
+        {
+            let shim = shim_file(&self.name);
+            let contents = format!(
+                r#"@echo off
+"{}" run %~n0 %*
+"#,
+                volta_exe().display()
+            );
+            ok_or_panic! { fs::write(shim, contents) };
+        }
+
+        #[cfg(unix)]
         ok_or_panic! { symlink_file(shim_exe(), shim_file(&self.name)) };
     }
 }
@@ -794,7 +809,13 @@ fn binary_config_file(name: &str) -> PathBuf {
     user_dir().join("bins").join(format!("{}.json", name))
 }
 fn shim_file(name: &str) -> PathBuf {
-    volta_bin_dir().join(format!("{}{}", name, env::consts::EXE_SUFFIX))
+    cfg_if! {
+        if #[cfg(target_os = "windows")] {
+            volta_bin_dir().join(format!("{name}.cmd"))
+        } else {
+            volta_bin_dir().join(name)
+        }
+    }
 }
 fn package_image_dir(name: &str) -> PathBuf {
     image_dir().join("packages").join(name)
