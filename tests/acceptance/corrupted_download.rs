@@ -104,6 +104,7 @@ fn install_valid_node_saves_to_inventory() {
 #[test]
 fn install_corrupted_pnpm_leaves_inventory_unchanged() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .node_available_versions(NODE_VERSION_INFO)
         .pnpm_available_versions(PNPM_VERSION_INFO)
         .distro_mocks::<NodeFixture>(&NODE_VERSION_FIXTURES)
@@ -141,6 +142,7 @@ fn install_valid_pnpm_saves_to_inventory() {
 #[test]
 fn install_corrupted_yarn_leaves_inventory_unchanged() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .node_available_versions(NODE_VERSION_INFO)
         .yarn_1_available_versions(YARN_1_VERSION_INFO)
         .distro_mocks::<NodeFixture>(&NODE_VERSION_FIXTURES)

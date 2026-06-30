@@ -209,6 +209,7 @@ fn redirects_download() {
 fn merges_project_and_default_hooks() {
     let local_hooks: PathBuf = [".volta", "hooks.json"].iter().collect();
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .package_json("{}")
         .default_hooks(&default_hooks_json())
         .project_file(&local_hooks.to_string_lossy(), &project_hooks_json())
@@ -340,6 +341,7 @@ fn merges_workspace_hooks() {
 #[test]
 fn pnpm_latest_with_hook_reads_index() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .default_hooks(&pnpm_hooks_json())
         .env("VOLTA_LOGLEVEL", "debug")
         .env("VOLTA_FEATURE_PNPM", "1")
@@ -375,6 +377,7 @@ fn pnpm_latest_with_hook_reads_index() {
 #[test]
 fn pnpm_no_version_with_hook_reads_index() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .default_hooks(&pnpm_hooks_json())
         .env("VOLTA_LOGLEVEL", "debug")
         .env("VOLTA_FEATURE_PNPM", "1")
@@ -410,6 +413,7 @@ fn pnpm_no_version_with_hook_reads_index() {
 #[test]
 fn yarn_latest_with_hook_reads_latest() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .default_hooks(&yarn_hooks_json())
         .env("VOLTA_LOGLEVEL", "debug")
         .build();
@@ -431,6 +435,7 @@ fn yarn_latest_with_hook_reads_latest() {
 #[test]
 fn yarn_no_version_with_hook_reads_latest() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .default_hooks(&yarn_hooks_json())
         .env("VOLTA_LOGLEVEL", "debug")
         .build();
@@ -452,6 +457,7 @@ fn yarn_no_version_with_hook_reads_latest() {
 #[test]
 fn yarn_semver_with_hook_uses_old_format() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .default_hooks(&yarn_hooks_json())
         .env("VOLTA_LOGLEVEL", "debug")
         .build();
@@ -482,6 +488,7 @@ fn yarn_semver_with_hook_uses_old_format() {
 #[test]
 fn yarn_semver_with_hook_uses_configured_format() {
     let s = sandbox()
+        .platform(r#"{ "node": { "runtime": "1.2.3", "npm": null }, "yarn": null }"#)
         .default_hooks(&yarn_hooks_format_json("npm"))
         .env("VOLTA_LOGLEVEL", "debug")
         .build();

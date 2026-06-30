@@ -814,6 +814,9 @@ fn yarn_image_dir(version: &str) -> PathBuf {
 fn default_platform_file() -> PathBuf {
     user_dir().join("platform.json")
 }
+fn directory_platforms_file() -> PathBuf {
+    user_dir().join("directory-platforms.json")
+}
 fn default_hooks_file() -> PathBuf {
     volta_home().join("hooks.json")
 }
@@ -964,8 +967,26 @@ impl Sandbox {
         let package_img_dir = package_image_dir(name);
         package_img_dir.join("package.json").exists()
     }
+    pub fn node_image_exists(version: &str) -> bool {
+        node_image_dir(version).exists()
+    }
+    pub fn npm_image_exists(version: &str) -> bool {
+        npm_image_dir(version).exists()
+    }
+    pub fn pnpm_image_exists(version: &str) -> bool {
+        pnpm_image_dir(version).exists()
+    }
+    pub fn yarn_image_exists(version: &str) -> bool {
+        yarn_image_dir(version).exists()
+    }
+    pub fn node_npm_version_file_exists(version: &str) -> bool {
+        node_npm_version_file(version).exists()
+    }
     pub fn read_default_platform() -> String {
         read_file_to_string(default_platform_file())
+    }
+    pub fn read_directory_platforms() -> String {
+        read_file_to_string(directory_platforms_file())
     }
 }
 

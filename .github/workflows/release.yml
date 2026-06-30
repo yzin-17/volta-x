@@ -259,6 +259,24 @@ jobs:
           asset_path: ./release/volta-windows-arm.zip
           asset_name: volta-${{ steps.release_info.outputs.version }}-windows-arm64.zip
           asset_content_type: application/zip
+      - name: Upload Unix installer
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dev/unix/volta-install.sh
+          asset_name: volta-install.sh
+          asset_content_type: text/x-shellscript
+      - name: Upload legacy Unix installer
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dev/unix/volta-install-legacy.sh
+          asset_name: volta-install-legacy.sh
+          asset_content_type: text/x-shellscript
       - name: Upload manifest file
         uses: actions/upload-release-asset@v1
         env:

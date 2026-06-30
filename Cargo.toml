@@ -3,7 +3,7 @@ name = "volta"
 version = "2.0.2"
 authors = ["David Herman <david.herman@gmail.com>", "Charles Pierce <cpierce.grad@gmail.com>"]
 license = "BSD-2-Clause"
-repository = "https://github.com/volta-cli/volta"
+repository = "https://github.com/yzin-17/volta-x"
 edition = "2021"
 
 [features]

@@ -7,7 +7,7 @@ use crate::command::Command;
 
 #[derive(clap::Args)]
 pub(crate) struct Uninstall {
-    /// The tool to uninstall, like `ember-cli-update`, `typescript`, or <package>
+    /// The tool to uninstall, like `node@18.19.0`, `yarn@1.22.22`, or `typescript`.
     tool: String,
 }
 
@@ -17,10 +17,9 @@ impl Command for Uninstall {
 
         let tool = tool::Spec::try_from_str(&self.tool)?;
 
-        // For packages, specifically report that we do not support uninstalling
-        // specific versions. For runtimes and package managers, we currently
-        // *intentionally* let this fall through to inform the user that we do
-        // not support uninstalling those *at all*.
+        // Package uninstalls still remove the active package shim/config, not a
+        // versioned package image. Runtime and package-manager specs continue
+        // to the versioned uninstall implementation.
         if let tool::Spec::Package(_name, version) = &tool {
             let VersionSpec::None = version else {
                 return Err(ErrorKind::Unimplemented {
@@ -30,7 +29,7 @@ impl Command for Uninstall {
             };
         }
 
-        tool.uninstall()?;
+        tool.uninstall(session)?;
 
         session.add_event_end(ActivityKind::Uninstall, ExitCode::Success);
         Ok(ExitCode::Success)

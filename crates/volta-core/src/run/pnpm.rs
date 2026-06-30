@@ -58,7 +58,9 @@ fn validate_platform_pnpm(platform: &Platform) -> Fallible<()> {
     match &platform.pnpm {
         Some(_) => Ok(()),
         None => match platform.node.source {
-            Source::Project => Err(ErrorKind::NoProjectPnpm.into()),
+            Source::Project | Source::Directory | Source::Nvmrc | Source::NodeVersion => {
+                Err(ErrorKind::NoProjectPnpm.into())
+            }
             Source::Default | Source::Binary => Err(ErrorKind::NoDefaultPnpm.into()),
             Source::CommandLine => Err(ErrorKind::NoCommandLinePnpm.into()),
         },

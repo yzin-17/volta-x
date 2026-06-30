@@ -11,6 +11,9 @@ use volta_core::style::{text_width, MAX_WIDTH};
     long_about = "The JavaScript Launcher ⚡
 
     To install a tool in your toolchain, use `volta install`.
+    To change the default to an installed version, use `volta default`.
+    To set local versions for the current directory, use `volta use`.
+    To clear local versions for the current directory, use `volta unuse`.
     To pin your project's runtime or package manager, use `volta pin`.",
     color = ColorChoice::Auto,
     disable_version_flag = true,
@@ -69,6 +72,9 @@ pub(crate) enum Subcommand {
     /// Installs a tool in your toolchain
     Install(command::Install),
 
+    /// Sets the default version of an already-installed tool
+    Default(command::Default),
+
     /// Uninstalls a tool from your toolchain
     Uninstall(command::Uninstall),
 
@@ -93,8 +99,11 @@ pub(crate) enum Subcommand {
     /// Locates the actual binary that will be called by Volta
     Which(command::Which),
 
-    #[command(long_about = crate::command::r#use::USAGE, hide = true)]
+    /// Sets tool versions for the current directory
     Use(command::Use),
+
+    /// Removes tool versions set for the current directory
+    Unuse(command::Unuse),
 
     /// Enables Volta for the current user / shell
     Setup(command::Setup),
@@ -108,12 +117,14 @@ impl Subcommand {
         match self {
             Subcommand::Fetch(fetch) => fetch.run(session),
             Subcommand::Install(install) => install.run(session),
+            Subcommand::Default(default) => default.run(session),
             Subcommand::Uninstall(uninstall) => uninstall.run(session),
             Subcommand::Pin(pin) => pin.run(session),
             Subcommand::List(list) => list.run(session),
             Subcommand::Completions(completions) => completions.run(session),
             Subcommand::Which(which) => which.run(session),
             Subcommand::Use(r#use) => r#use.run(session),
+            Subcommand::Unuse(unuse) => unuse.run(session),
             Subcommand::Setup(setup) => setup.run(session),
             Subcommand::Run(run) => run.run(session),
         }

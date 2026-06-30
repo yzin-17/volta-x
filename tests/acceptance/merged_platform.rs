@@ -215,7 +215,7 @@ fn uses_project_npm_if_available() {
 }
 
 #[test]
-fn uses_bundled_npm_in_project_without_npm() {
+fn uses_default_npm_in_project_without_npm() {
     let s = sandbox()
         .platform(PLATFORM_WITH_NPM)
         .package_json(PACKAGE_JSON_NODE_ONLY)
@@ -229,7 +229,7 @@ fn uses_bundled_npm_in_project_without_npm() {
         execs()
             .with_status(ExitCode::Success as i32)
             .with_stderr_contains("[..]Node: 10.99.1040 from project configuration")
-            .with_stderr_contains("[..]npm: 6.2.26 from project configuration")
+            .with_stderr_contains("[..]npm: 1.2.3 from default configuration")
     );
 }
 

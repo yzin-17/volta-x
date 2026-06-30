@@ -49,9 +49,9 @@ fn no_cause_if_no_underlying_error() {
     let s = sandbox().build();
 
     assert_that!(
-        s.volta("use --verbose"),
+        s.volta("install pnpm --verbose"),
         execs()
-            .with_status(ExitCode::InvalidArguments as i32)
+            .with_status(ExitCode::ConfigurationError as i32)
             .with_stderr_does_not_contain("[..]Error cause[..]")
     );
 }
@@ -79,9 +79,9 @@ fn no_error_log_if_no_underlying_cause() {
     let s = sandbox().build();
 
     assert_that!(
-        s.volta("use"),
+        s.volta("install pnpm"),
         execs()
-            .with_status(ExitCode::InvalidArguments as i32)
+            .with_status(ExitCode::ConfigurationError as i32)
             .with_stderr_does_not_contain("Error details written to[..]")
     );
 

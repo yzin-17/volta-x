@@ -80,12 +80,18 @@ $VOLTA_HOME/tools/user/directory-platforms.json
 ```sh
 cd ~/work/project-a
 volta use node@18
+volta use list
+volta unuse node
+volta unuse --dir ~/work/project-a node
+volta unuse --all
 
 cd ~/work/project-a/packages/app
 node --version
 ```
 
 在子目录执行 `node` 时，应继承 `~/work/project-a` 中记录的 `node@18`。
+
+`volta use list` 用于查看本机记录的目录映射；`volta unuse` 默认只撤销当前目录精确映射中的本地配置，也可通过 `--dir <path>` 指定其它目录。它不修改 `volta pin`、`.nvmrc`、`.node-version` 或默认版本。
 
 ## 自动切换优先级
 
@@ -94,17 +100,24 @@ node --version
 优先级必须固定为：
 
 ```text
-volta pin > .nvmrc > .node-version > volta use > 默认版本
+volta use > volta pin > .nvmrc > .node-version > 默认版本
 ```
 
-具体规则：
+具体规则（按优先级由高到低）：
 
-- `volta pin` 指 `package.json` 中的 `volta` 配置，保持最高优先级。
-- `.nvmrc` 只影响 Node 版本。
-- `.node-version` 只影响 Node 版本。
-- `.nvmrc` 优先于 `.node-version`。
-- `volta use` 低于项目文件配置，高于默认版本。
-- 当高优先级来源只提供 Node 版本时，`npm`、`pnpm`、`yarn` 可以从低优先级来源继承。
+- volta use: 目录级的显式设置（例如通过 `volta use node@18`）。
+- volta pin: 来自 package.json 中的 `volta` 配置，作为项目级固定配置；它的字段仅覆盖其明确声明的工具和版本。
+- .nvmrc: 仅用于确定 Node 版本（可包含具体版本、v前缀、semver 范围、lts 或 latest）。当存在时覆盖 `.node-version` 和默认 Node，但不影响包管理器版本。
+- .node-version: 仅用于确定 Node 版本，优先级低于 `.nvmrc`，高于默认版本。
+- 默认版本: 没有其它来源时使用的全局/用户默认工具版本。
+
+继承与合并规则：
+
+- 当高优先级来源只指定 Node 版本（例如 `.nvmrc` 或 `.node-version`），但未指定 npm/pnpm/yarn，则 npm/pnpm/yarn 可从下一级来源继承其版本（例如 volta use 或 volta pin 或默认版本）。
+- 当某一来源（如 volta pin 的 package.json.volta）只声明部分工具时，未声明的工具按下一级优先级继续查找。
+- 优先级比较以每个工具单独评估：对 Node、npm、pnpm、yarn 或全局二进制分别计算生效版本。
+- 任何时候，高优先级显式声明的版本均覆盖低优先级的版本。
+
 
 `.nvmrc` 和 `.node-version` 的解析应支持：
 
@@ -158,11 +171,11 @@ volta uninstall yarn@1.22.22
 示例：
 
 ```sh
-VOLTA_REPO="${VOLTA_REPO:-${GITHUB_REPOSITORY:-owner/volta-x}}"
+VOLTA_REPO="${VOLTA_REPO:-${GITHUB_REPOSITORY:-yzin-17/volta-x}}"
 RELEASE_URL="https://github.com/${VOLTA_REPO}/releases"
 ```
 
-其中 `owner/volta-x` 应在实现时替换为最终 fork 仓库名，或作为明确 fallback 保留。
+其中 `yzin-17/volta-x` 是当前 fork 的明确 fallback；本地或外部脚本仍可通过 `VOLTA_REPO` 覆盖。
 
 ## GitHub Actions 配置
 
@@ -228,10 +241,10 @@ RELEASE_URL="https://github.com/${VOLTA_REPO}/releases"
 
 ### 自动切换优先级
 
+- `volta use` 目录映射优先于 `package.json` 中的 `volta` 配置。
 - `package.json` 中的 `volta` 配置优先于 `.nvmrc`。
 - `.nvmrc` 优先于 `.node-version`。
-- `.node-version` 优先于 `volta use`。
-- `volta use` 优先于默认版本。
+- `.node-version` 优先于默认版本。
 - `.nvmrc` 和 `.node-version` 只影响 Node，其他工具可从低优先级来源继承。
 
 ### 特定版本卸载
@@ -255,6 +268,6 @@ RELEASE_URL="https://github.com/${VOLTA_REPO}/releases"
 - “进入目录时自动切换”通过 Volta shim 在命令执行时根据当前工作目录选择版本实现，不引入 shell `cd` hook 或后台守护进程。
 - `.nvmrc` 和 `.node-version` 是 Node-only 配置来源。
 - `volta use` 是机器本地配置，不写入项目文件，也不适合作为团队共享配置。
-- `volta pin` 继续作为项目共享配置的最高优先级来源。
+- `volta pin` 继续作为项目共享配置来源；机器本地的 `volta use` 目录映射优先级更高，便于用户在本机覆盖项目配置。
 - `volta default` 是显式改变默认版本的唯一推荐命令。
-- GitHub 仓库 fallback 名称需要在实现阶段替换为最终 fork 的真实 `owner/repo`。
+- GitHub 仓库 fallback 名称已替换为当前 fork 的真实仓库 `yzin-17/volta-x`。

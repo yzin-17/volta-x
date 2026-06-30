@@ -33,6 +33,7 @@ layout! {
                 "bins": default_bin_dir {}
                 "packages": default_package_dir {}
                 "platform.json": default_platform_file;
+                "directory-platforms.json": directory_platforms_file;
             }
         }
         "tmp": tmp_dir {}

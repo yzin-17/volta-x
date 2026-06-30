@@ -63,7 +63,9 @@ fn validate_platform_yarn(platform: &Platform) -> Fallible<()> {
     match &platform.yarn {
         Some(_) => Ok(()),
         None => match platform.node.source {
-            Source::Project => Err(ErrorKind::NoProjectYarn.into()),
+            Source::Project | Source::Directory | Source::Nvmrc | Source::NodeVersion => {
+                Err(ErrorKind::NoProjectYarn.into())
+            }
             Source::Default | Source::Binary => Err(ErrorKind::NoDefaultYarn.into()),
             Source::CommandLine => Err(ErrorKind::NoCommandLineYarn.into()),
         },

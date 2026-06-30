@@ -550,7 +550,8 @@ impl UninstallCommand {
             self.tool.name()
         );
 
-        self.tool.uninstall()?;
+        let mut session = Session::init();
+        self.tool.uninstall(&mut session)?;
 
         Ok(ExitStatus::from_raw(0))
     }
