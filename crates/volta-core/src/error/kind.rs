@@ -10,7 +10,7 @@ use textwrap::{fill, indent};
 const REPORT_BUG_CTA: &str =
     "Please rerun the command that triggered this error with the environment
 variable `VOLTA_LOGLEVEL` set to `debug` and open an issue at
-https://github.com/volta-cli/volta/issues with the details!";
+https://github.com/yzin-17/volta-x/issues with the details!";
 
 const PERMISSIONS_CTA: &str = "Please ensure you have correct permissions to the Volta directory.";
 
@@ -47,6 +47,16 @@ pub enum ErrorKind {
 
     /// Thrown when a user tries to `volta pin` something other than node/yarn/npm.
     CannotPinPackage {
+        package: String,
+    },
+
+    /// Thrown when a user tries to `volta default` a package.
+    CannotDefaultPackage {
+        package: String,
+    },
+
+    /// Thrown when a user tries to `volta use` a package.
+    CannotUsePackage {
         package: String,
     },
 
@@ -238,6 +248,13 @@ pub enum ErrorKind {
     /// Thrown when the user tries to pin Node or Yarn versions outside of a package.
     NotInPackage,
 
+    /// Thrown when the user tries to uninstall a tool version that is still referenced.
+    ToolVersionInUse {
+        tool: String,
+        version: String,
+        source: String,
+    },
+
     /// Thrown when default Yarn is not set
     NoDefaultYarn,
 
@@ -426,6 +443,12 @@ pub enum ErrorKind {
         tool: String,
     },
 
+    /// Thrown when a user tries to default a tool version that is not installed locally.
+    ToolVersionNotInstalled {
+        tool: String,
+        matching: String,
+    },
+
     /// Thrown when there was an error copying an unpacked tool to the image directory
     SetupToolImageError {
         tool: String,
@@ -585,6 +608,20 @@ Use `volta install {}` to update the default version.",
 
 Use `npm install` or `yarn add` to select a version of {} for this project.",
                 package
+            ),
+            ErrorKind::CannotDefaultPackage { package } => write!(
+                f,
+                "Cannot set package `{}` as a default tool.
+
+Use `volta install {}` to install it globally.",
+                package, package
+            ),
+            ErrorKind::CannotUsePackage { package } => write!(
+                f,
+                "Cannot set package `{}` for the current directory.
+
+Use `volta install {}` to install it globally.",
+                package, package
             ),
             ErrorKind::CompletionsOutFileError { path } => write!(
                 f,
@@ -1320,6 +1357,27 @@ at {}
 {}",
                 REPORT_BUG_CTA
             ),
+            ErrorKind::ToolVersionNotInstalled { tool, matching } => write!(
+                f,
+                "Could not find {} version matching `{}` in the local inventory.
+
+Run `volta install {}@{}` before selecting it.",
+                tool,
+                matching,
+                tool.to_ascii_lowercase(),
+                matching
+            ),
+            ErrorKind::ToolVersionInUse {
+                tool,
+                version,
+                source,
+            } => write!(
+                f,
+                "Cannot uninstall {} because {} is still referenced by {}.",
+                tool_version(tool, version),
+                tool_version(tool, version),
+                source
+            ),
             ErrorKind::Unimplemented { feature } => {
                 write!(f, "{} is not supported yet.", feature)
             }
@@ -1465,7 +1523,9 @@ impl ErrorKind {
             ErrorKind::BuildPathError => ExitCode::EnvironmentError,
             ErrorKind::BypassError { .. } => ExitCode::ExecutionFailure,
             ErrorKind::CannotFetchPackage { .. } => ExitCode::InvalidArguments,
-            ErrorKind::CannotPinPackage { .. } => ExitCode::InvalidArguments,
+            ErrorKind::CannotDefaultPackage { .. }
+            | ErrorKind::CannotPinPackage { .. }
+            | ErrorKind::CannotUsePackage { .. } => ExitCode::InvalidArguments,
             ErrorKind::CompletionsOutFileError { .. } => ExitCode::InvalidArguments,
             ErrorKind::ContainingDirError { .. } => ExitCode::FileSystemError,
             ErrorKind::CouldNotDetermineTool => ExitCode::UnknownError,
@@ -1560,6 +1620,8 @@ impl ErrorKind {
             ErrorKind::StringifyBinConfigError => ExitCode::UnknownError,
             ErrorKind::StringifyPackageConfigError => ExitCode::UnknownError,
             ErrorKind::StringifyPlatformError => ExitCode::UnknownError,
+            ErrorKind::ToolVersionNotInstalled { .. } => ExitCode::ConfigurationError,
+            ErrorKind::ToolVersionInUse { .. } => ExitCode::ConfigurationError,
             ErrorKind::Unimplemented { .. } => ExitCode::UnknownError,
             ErrorKind::UnpackArchiveError { .. } => ExitCode::UnknownError,
             ErrorKind::UpgradePackageNotFound { .. } => ExitCode::ConfigurationError,

@@ -10,7 +10,9 @@ use headers::{Expires, Header};
 use mockito::{self, mock, Matcher};
 use node_semver::Version;
 use test_support::{self, ok_or_panic, paths, paths::PathExt, process::ProcessBuilder};
-use volta_core::fs::{set_executable, symlink_file};
+use volta_core::fs::set_executable;
+#[cfg(unix)]
+use volta_core::fs::symlink_file;
 use volta_core::tool::{Node, Pnpm, Yarn};
 
 // version cache for node and yarn
@@ -127,15 +129,57 @@ impl FileBuilder {
 
 struct ShimBuilder {
     name: String,
+    kind: ShimKind,
+}
+
+enum ShimKind {
+    DefaultTool,
+    Package,
 }
 
 impl ShimBuilder {
-    fn new(name: String) -> ShimBuilder {
-        ShimBuilder { name }
+    fn new_default_tool(name: String) -> ShimBuilder {
+        ShimBuilder {
+            name,
+            kind: ShimKind::DefaultTool,
+        }
+    }
+
+    fn new_package(name: String) -> ShimBuilder {
+        ShimBuilder {
+            name,
+            kind: ShimKind::Package,
+        }
     }
 
     fn build(&self) {
-        ok_or_panic! { symlink_file(shim_exe(), shim_file(&self.name)) };
+        match self.kind {
+            ShimKind::DefaultTool => {
+                #[cfg(windows)]
+                {
+                    ok_or_panic! { fs::copy(shim_exe(), default_shim_file(&self.name)) };
+                }
+
+                #[cfg(unix)]
+                ok_or_panic! { symlink_file(shim_exe(), package_shim_file(&self.name)) };
+            }
+            ShimKind::Package => {
+                #[cfg(windows)]
+                {
+                    let shim = package_shim_file(&self.name);
+                    let contents = format!(
+                        r#"@echo off
+"{}" run %~n0 %*
+"#,
+                        volta_exe().display()
+                    );
+                    ok_or_panic! { fs::write(shim, contents) };
+                }
+
+                #[cfg(unix)]
+                ok_or_panic! { symlink_file(shim_exe(), package_shim_file(&self.name)) };
+            }
+        }
     }
 }
 
@@ -314,9 +358,9 @@ impl SandboxBuilder {
             caches: vec![],
             path_dirs: vec![volta_bin_dir()],
             shims: vec![
-                ShimBuilder::new("npm".to_string()),
-                ShimBuilder::new("pnpm".to_string()),
-                ShimBuilder::new("yarn".to_string()),
+                ShimBuilder::new_default_tool("npm".to_string()),
+                ShimBuilder::new_default_tool("pnpm".to_string()),
+                ShimBuilder::new_default_tool("yarn".to_string()),
             ],
             has_exec_path: false,
         }
@@ -534,7 +578,7 @@ impl SandboxBuilder {
 
     /// Set a shim file for the sandbox (chainable)
     pub fn shim(mut self, name: &str) -> Self {
-        self.shims.push(ShimBuilder::new(name.to_string()));
+        self.shims.push(ShimBuilder::new_package(name.to_string()));
         self
     }
 
@@ -793,8 +837,20 @@ fn package_config_file(name: &str) -> PathBuf {
 fn binary_config_file(name: &str) -> PathBuf {
     user_dir().join("bins").join(format!("{}.json", name))
 }
-fn shim_file(name: &str) -> PathBuf {
+fn default_shim_file(name: &str) -> PathBuf {
     volta_bin_dir().join(format!("{}{}", name, env::consts::EXE_SUFFIX))
+}
+fn package_shim_file(name: &str) -> PathBuf {
+    cfg_if! {
+        if #[cfg(target_os = "windows")] {
+            volta_bin_dir().join(format!("{name}.cmd"))
+        } else {
+            volta_bin_dir().join(name)
+        }
+    }
+}
+fn is_default_tool_shim(name: &str) -> bool {
+    matches!(name, "npm" | "pnpm" | "yarn")
 }
 fn package_image_dir(name: &str) -> PathBuf {
     image_dir().join("packages").join(name)
@@ -813,6 +869,9 @@ fn yarn_image_dir(version: &str) -> PathBuf {
 }
 fn default_platform_file() -> PathBuf {
     user_dir().join("platform.json")
+}
+fn directory_platforms_file() -> PathBuf {
+    user_dir().join("directory-platforms.json")
 }
 fn default_hooks_file() -> PathBuf {
     volta_home().join("hooks.json")
@@ -910,7 +969,12 @@ impl Sandbox {
     /// Example:
     ///     assert_that(p.exec_shim("cowsay", "foo bar"), execs());
     pub fn exec_shim(&self, bin: &str, cmd: &str) -> ProcessBuilder {
-        let mut p = self.process(shim_file(bin));
+        let shim = if is_default_tool_shim(bin) {
+            default_shim_file(bin)
+        } else {
+            package_shim_file(bin)
+        };
+        let mut p = self.process(shim);
         split_and_add_args(&mut p, cmd);
         p
     }
@@ -955,7 +1019,7 @@ impl Sandbox {
         binary_config_file(name).exists()
     }
     pub fn shim_exists(name: &str) -> bool {
-        shim_file(name).exists()
+        package_shim_file(name).exists()
     }
     pub fn path_exists(path: &str) -> bool {
         sandbox_path(path).exists()
@@ -964,8 +1028,26 @@ impl Sandbox {
         let package_img_dir = package_image_dir(name);
         package_img_dir.join("package.json").exists()
     }
+    pub fn node_image_exists(version: &str) -> bool {
+        node_image_dir(version).exists()
+    }
+    pub fn npm_image_exists(version: &str) -> bool {
+        npm_image_dir(version).exists()
+    }
+    pub fn pnpm_image_exists(version: &str) -> bool {
+        pnpm_image_dir(version).exists()
+    }
+    pub fn yarn_image_exists(version: &str) -> bool {
+        yarn_image_dir(version).exists()
+    }
+    pub fn node_npm_version_file_exists(version: &str) -> bool {
+        node_npm_version_file(version).exists()
+    }
     pub fn read_default_platform() -> String {
         read_file_to_string(default_platform_file())
+    }
+    pub fn read_directory_platforms() -> String {
+        read_file_to_string(directory_platforms_file())
     }
 }
 

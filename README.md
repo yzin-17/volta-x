@@ -1,24 +1,26 @@
 <p align="center">
-  <a href="https://www.volta.sh/">
+  <a href="https://github.com/yzin-17/volta-x">
     <img alt="Volta" src="./volta.png?raw=true" width="360">
   </a>
 </p>
 
 <p align="center">
-  The Hassle-Free JavaScript Tool Manager
+  Volta-X: The Hassle-Free JavaScript Tool Manager
 </p>
 
 <p align="center">
-  <img alt="Production Build Status" src="https://github.com/volta-cli/volta/workflows/Production/badge.svg" />
-  <a href="https://github.com/volta-cli/volta/actions?query=workflow%3ATest">
-    <img alt="Test Status" src="https://github.com/volta-cli/volta/workflows/Test/badge.svg" />
+  <a href="https://github.com/yzin-17/volta-x/actions/workflows/release.yml">
+    <img alt="Release Build Status" src="https://github.com/yzin-17/volta-x/actions/workflows/release.yml/badge.svg" />
+  </a>
+  <a href="https://github.com/yzin-17/volta-x/actions/workflows/test.yml">
+    <img alt="Test Status" src="https://github.com/yzin-17/volta-x/actions/workflows/test.yml/badge.svg" />
   </a>
 </p>
 
 ---
 
 > [!IMPORTANT]
-> **Volta is unmaintained.** Everything that works today should continue to do so for the foreseeable future, so if it is working for you, there is no particular *urgency* to migrate to another tool, but we will not be able to address breakages from new OS releases or other changes in the ecosystem, so you should put it on your maintenance roadmap at some point. We recommend migrating to [`mise`](https://mise.jdx.dev/). See [issue #2080](https://github.com/volta-cli/volta/issues/2080).
+> **Volta-X is a maintained fork of Volta.** It keeps Volta's fast toolchain workflow while adding explicit defaults, directory-level tool versions, `.nvmrc` / `.node-version` switching, and fork-owned release artifacts.
 
 ---
 
@@ -27,7 +29,7 @@
 
 **Reliable:** Ensure everyone in your project has the same tools—without interfering with their workflow.
 
-**Universal:** No matter the package manager, Node runtime, or OS, one command is all you need: `volta install`.
+**Universal:** No matter the package manager, Node runtime, or OS, Volta-X keeps the same fast workflow with explicit control over defaults.
 
 ## Features
 
@@ -40,17 +42,48 @@
 
 ## Installing Volta
 
-Read the [Getting Started Guide](https://docs.volta.sh/guide/getting-started) on our website for detailed instructions on how to install Volta.
+Install Volta-X from this fork's GitHub Releases:
+
+```sh
+curl https://raw.githubusercontent.com/yzin-17/volta-x/main/dev/unix/boot-install.sh | bash
+```
+
+The installer downloads release artifacts from `https://github.com/yzin-17/volta-x/releases`. Set `VOLTA_REPO=owner/repo` to use release artifacts from another fork.
 
 ## Using Volta
 
-Read the [Understanding Volta Guide](https://docs.volta.sh/guide/understanding) on our website for detailed instructions on how to use Volta.
+Use `volta install` to fetch tool versions. The first installed version of a tool becomes the default; later installs keep the existing default instead of silently replacing it.
 
-## Contributing to Volta
+```sh
+volta install node@18
+volta install node@20
+```
 
-Contributions are always welcome, no matter how large or small. Substantial feature ideas should be proposed as an [RFC](https://github.com/volta-cli/rfcs). Before contributing, please read the [code of conduct](CODE_OF_CONDUCT.md).
+Use `volta default` when you want to change the global default to an already-installed version. It does not download missing tools, so install the version first if it is not local yet.
 
-See the [Contributing Guide](https://docs.volta.sh/contributing/) on our website for detailed instructions on how to contribute to Volta.
+```sh
+volta default node@20
+volta default npm@bundled
+volta default yarn@1.22.22
+```
+
+Use `volta use` to set local tool versions for the current directory and its children without editing project files.
+
+```sh
+volta use node@18 pnpm@7.7.1
+volta use list
+volta unuse node
+volta unuse --dir ../project-a node
+volta unuse --all
+```
+
+Version selection is resolved in this order: `volta use`, `volta pin`, `.nvmrc`, `.node-version`, then the global default. `.nvmrc` and `.node-version` affect Node only; package managers can still inherit from lower-priority sources.
+
+Use `volta uninstall <tool>@<version>` to remove a specific installed Node, npm, pnpm, or Yarn version when it is not referenced by defaults, the current project, or a `volta use` directory mapping.
+
+## Contributing to Volta-X
+
+Contributions are always welcome, no matter how large or small. Before contributing, please read the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Who is using Volta?
 

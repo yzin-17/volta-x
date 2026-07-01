@@ -2,15 +2,18 @@ use std::env;
 use std::fmt::{self, Display};
 use std::path::PathBuf;
 
+use crate::directory_platform::DirectoryPlatforms;
 use crate::error::{ErrorKind, Fallible};
+use crate::inventory::{node_versions, npm_versions, pnpm_versions, yarn_versions};
 use crate::layout::volta_home;
 use crate::session::Session;
 use crate::style::{note_prefix, success_prefix, tool_version};
 use crate::sync::VoltaLock;
-use crate::version::VersionSpec;
+use crate::version::{VersionSpec, VersionTag};
 use crate::VOLTA_FEATURE_PNPM;
 use cfg_if::cfg_if;
 use log::{debug, info};
+use node_semver::{Range, Version};
 
 pub mod node;
 pub mod npm;
@@ -18,6 +21,7 @@ pub mod package;
 pub mod pnpm;
 mod registry;
 mod serial;
+mod uninstall;
 pub mod yarn;
 
 pub use node::{
@@ -37,12 +41,27 @@ fn info_installed<T: Display>(tool: T) {
     info!("{} installed and set {tool} as default", success_prefix());
 }
 
+fn info_defaulted<T: Display>(tool: T) {
+    info!("{} set {tool} as default", success_prefix());
+}
+
+fn info_default_preserved<T: Display>(tool: T) {
+    info!(
+        "{} {tool} is installed; existing default version was not changed",
+        note_prefix()
+    );
+}
+
 fn info_fetched<T: Display>(tool: T) {
     info!("{} fetched {tool}", success_prefix());
 }
 
 fn info_pinned<T: Display>(tool: T) {
     info!("{} pinned {tool} in package.json", success_prefix());
+}
+
+fn info_directory_used<T: Display>(tool: T) {
+    info!("{} set {tool} for the current directory", success_prefix());
 }
 
 fn info_project_version<P, D>(project_version: P, default_version: D)
@@ -115,34 +134,249 @@ impl Spec {
         }
     }
 
+    /// Install a tool, fetching it if needed. Core runtime tools only become the default
+    /// when no default for that tool exists yet; package installs keep their existing behavior.
+    pub fn install(self, session: &mut Session) -> Fallible<()> {
+        match self {
+            Spec::Node(version) => {
+                let version = node::resolve(version, session)?;
+                let node = Node::new(version.clone());
+
+                if session.default_platform()?.is_some() {
+                    node.ensure_fetched(session)?;
+                    info_default_preserved(node);
+                    Ok(())
+                } else {
+                    Box::new(node).install(session)
+                }
+            }
+            Spec::Npm(version)
+                if !is_bundled_npm(&version) && session.default_platform()?.is_none() =>
+            {
+                Err(ErrorKind::NoDefaultNodeVersion { tool: "npm".into() }.into())
+            }
+            Spec::Npm(version) => match npm::resolve(version, session)? {
+                Some(version) => {
+                    let npm = Npm::new(version.clone());
+
+                    if session
+                        .default_platform()?
+                        .is_some_and(|platform| platform.npm.is_some())
+                    {
+                        npm.ensure_fetched(session)?;
+                        info_default_preserved(npm);
+                        Ok(())
+                    } else {
+                        Box::new(npm).install(session)
+                    }
+                }
+                None => {
+                    if session
+                        .default_platform()?
+                        .is_some_and(|platform| platform.npm.is_some())
+                    {
+                        info_default_preserved("bundled npm");
+                        Ok(())
+                    } else {
+                        Box::new(BundledNpm).install(session)
+                    }
+                }
+            },
+            Spec::Pnpm(version) => {
+                if env::var_os(VOLTA_FEATURE_PNPM).is_some() {
+                    if session.default_platform()?.is_none() {
+                        return Err(ErrorKind::NoDefaultNodeVersion {
+                            tool: "pnpm".into(),
+                        }
+                        .into());
+                    }
+
+                    let version = pnpm::resolve(version, session)?;
+                    let pnpm = Pnpm::new(version.clone());
+
+                    if session
+                        .default_platform()?
+                        .is_some_and(|platform| platform.pnpm.is_some())
+                    {
+                        pnpm.ensure_fetched(session)?;
+                        info_default_preserved(pnpm);
+                        Ok(())
+                    } else {
+                        Box::new(pnpm).install(session)
+                    }
+                } else {
+                    Box::new(Package::new("pnpm".to_owned(), version)?).install(session)
+                }
+            }
+            Spec::Yarn(version) => {
+                if session.default_platform()?.is_none() {
+                    return Err(ErrorKind::NoDefaultNodeVersion {
+                        tool: "Yarn".into(),
+                    }
+                    .into());
+                }
+
+                let version = yarn::resolve(version, session)?;
+                let yarn = Yarn::new(version.clone());
+
+                if session
+                    .default_platform()?
+                    .is_some_and(|platform| platform.yarn.is_some())
+                {
+                    yarn.ensure_fetched(session)?;
+                    info_default_preserved(yarn);
+                    Ok(())
+                } else {
+                    Box::new(yarn).install(session)
+                }
+            }
+            Spec::Package(name, version) => Box::new(Package::new(name, version)?).install(session),
+        }
+    }
+
+    /// Set the default version of an already-fetched core tool without downloading.
+    pub fn default(self, session: &mut Session) -> Fallible<()> {
+        let _lock = VoltaLock::acquire();
+
+        match self {
+            Spec::Node(version) => {
+                let version = resolve_local_version("Node", version, node_versions()?)?;
+                session.toolchain_mut()?.set_active_node(&version)?;
+                info_defaulted(Node::new(version));
+                check_shim_reachable("node");
+                Ok(())
+            }
+            Spec::Npm(version) => match resolve_local_npm(version)? {
+                Some(version) => {
+                    session
+                        .toolchain_mut()?
+                        .set_active_npm(Some(version.clone()))?;
+                    info_defaulted(Npm::new(version));
+                    check_shim_reachable("npm");
+                    Ok(())
+                }
+                None => Box::new(BundledNpm).install(session),
+            },
+            Spec::Pnpm(version) => {
+                if env::var_os(VOLTA_FEATURE_PNPM).is_some() {
+                    let version = resolve_local_version("pnpm", version, pnpm_versions()?)?;
+                    session
+                        .toolchain_mut()?
+                        .set_active_pnpm(Some(version.clone()))?;
+                    info_defaulted(Pnpm::new(version));
+                    check_shim_reachable("pnpm");
+                    Ok(())
+                } else {
+                    Err(ErrorKind::CannotDefaultPackage {
+                        package: "pnpm".into(),
+                    }
+                    .into())
+                }
+            }
+            Spec::Yarn(version) => {
+                let version = resolve_local_version("Yarn", version, yarn_versions()?)?;
+                session
+                    .toolchain_mut()?
+                    .set_active_yarn(Some(version.clone()))?;
+                info_defaulted(Yarn::new(version));
+                check_shim_reachable("yarn");
+                Ok(())
+            }
+            Spec::Package(name, _) => Err(ErrorKind::CannotDefaultPackage { package: name }.into()),
+        }
+    }
+
+    /// Set the version of an already-fetched core tool for the current directory without downloading.
+    pub fn use_current_dir(self, _session: &mut Session) -> Fallible<()> {
+        let _lock = VoltaLock::acquire();
+        let mut directory_platforms = DirectoryPlatforms::current()?;
+
+        match self {
+            Spec::Node(version) => {
+                let version = resolve_local_version("Node", version, node_versions()?)?;
+                directory_platforms.set_current_dir(|platform| {
+                    platform.node = Some(version.clone());
+                })?;
+                info_directory_used(Node::new(version));
+                Ok(())
+            }
+            Spec::Npm(version) => match resolve_local_npm(version)? {
+                Some(version) => {
+                    directory_platforms.set_current_dir(|platform| {
+                        platform.npm = Some(Some(version.clone()));
+                    })?;
+                    info_directory_used(Npm::new(version));
+                    Ok(())
+                }
+                None => {
+                    directory_platforms.set_current_dir(|platform| {
+                        platform.npm = Some(None);
+                    })?;
+                    info_directory_used("bundled npm");
+                    Ok(())
+                }
+            },
+            Spec::Pnpm(version) => {
+                if env::var_os(VOLTA_FEATURE_PNPM).is_some() {
+                    let version = resolve_local_version("pnpm", version, pnpm_versions()?)?;
+                    directory_platforms.set_current_dir(|platform| {
+                        platform.pnpm = Some(version.clone());
+                    })?;
+                    info_directory_used(Pnpm::new(version));
+                    Ok(())
+                } else {
+                    Err(ErrorKind::CannotUsePackage {
+                        package: "pnpm".into(),
+                    }
+                    .into())
+                }
+            }
+            Spec::Yarn(version) => {
+                let version = resolve_local_version("Yarn", version, yarn_versions()?)?;
+                directory_platforms.set_current_dir(|platform| {
+                    platform.yarn = Some(version.clone());
+                })?;
+                info_directory_used(Yarn::new(version));
+                Ok(())
+            }
+            Spec::Package(name, _) => Err(ErrorKind::CannotUsePackage { package: name }.into()),
+        }
+    }
+
     /// Uninstall a tool, removing it from the local inventory
     ///
     /// This is implemented on Spec, instead of Resolved, because there is currently no need to
     /// resolve the specific version before uninstalling a tool.
-    pub fn uninstall(self) -> Fallible<()> {
+    pub fn uninstall(self, session: &mut Session) -> Fallible<()> {
         match self {
-            Spec::Node(_) => Err(ErrorKind::Unimplemented {
+            Spec::Node(VersionSpec::None) => Err(ErrorKind::Unimplemented {
                 feature: "Uninstalling node".into(),
             }
             .into()),
-            Spec::Npm(_) => Err(ErrorKind::Unimplemented {
+            Spec::Node(version) => uninstall::CoreTool::Node.uninstall(version, session),
+            Spec::Npm(VersionSpec::None) => Err(ErrorKind::Unimplemented {
                 feature: "Uninstalling npm".into(),
             }
             .into()),
-            Spec::Pnpm(_) => {
+            Spec::Npm(version) => uninstall::CoreTool::Npm.uninstall(version, session),
+            Spec::Pnpm(version) => {
                 if env::var_os(VOLTA_FEATURE_PNPM).is_some() {
-                    Err(ErrorKind::Unimplemented {
-                        feature: "Uninstalling pnpm".into(),
+                    match version {
+                        VersionSpec::None => Err(ErrorKind::Unimplemented {
+                            feature: "Uninstalling pnpm".into(),
+                        }
+                        .into()),
+                        version => uninstall::CoreTool::Pnpm.uninstall(version, session),
                     }
-                    .into())
                 } else {
                     package::uninstall("pnpm")
                 }
             }
-            Spec::Yarn(_) => Err(ErrorKind::Unimplemented {
+            Spec::Yarn(VersionSpec::None) => Err(ErrorKind::Unimplemented {
                 feature: "Uninstalling yarn".into(),
             }
             .into()),
+            Spec::Yarn(version) => uninstall::CoreTool::Yarn.uninstall(version, session),
             Spec::Package(name, _) => package::uninstall(&name),
         }
     }
@@ -157,6 +391,62 @@ impl Spec {
             Spec::Package(name, _) => name,
         }
     }
+}
+
+fn is_bundled_npm(version: &VersionSpec) -> bool {
+    matches!(version, VersionSpec::Tag(VersionTag::Custom(tag)) if tag == "bundled")
+}
+
+fn resolve_local_npm(version: VersionSpec) -> Fallible<Option<Version>> {
+    match version {
+        VersionSpec::Tag(VersionTag::Custom(tag)) if tag == "bundled" => Ok(None),
+        version => resolve_local_version("npm", version, npm_versions()?).map(Some),
+    }
+}
+
+pub fn resolve_local_node(version: VersionSpec) -> Fallible<Version> {
+    resolve_local_version("Node", version, node_versions()?)
+}
+
+pub(crate) fn resolve_local_version(
+    tool: &str,
+    matching: VersionSpec,
+    versions: std::collections::BTreeSet<Version>,
+) -> Fallible<Version> {
+    let display = matching.to_string();
+    let version = match matching {
+        VersionSpec::Exact(version) => versions.get(&version).cloned(),
+        VersionSpec::Semver(range) => newest_matching(versions, &range),
+        VersionSpec::None | VersionSpec::Tag(VersionTag::Latest) => {
+            versions.into_iter().next_back()
+        }
+        VersionSpec::Tag(VersionTag::Lts) if tool == "Node" => versions.into_iter().next_back(),
+        VersionSpec::Tag(tag) => {
+            return Err(ErrorKind::ToolVersionNotInstalled {
+                tool: tool.into(),
+                matching: tag.to_string(),
+            }
+            .into())
+        }
+    };
+
+    version.ok_or_else(|| {
+        ErrorKind::ToolVersionNotInstalled {
+            tool: tool.into(),
+            matching: display,
+        }
+        .into()
+    })
+}
+
+fn newest_matching(
+    versions: std::collections::BTreeSet<Version>,
+    range: &Range,
+) -> Option<Version> {
+    versions
+        .into_iter()
+        .rev()
+        .find(|version| range.satisfies(version))
 }
 
 impl Display for Spec {

@@ -12,12 +12,15 @@ cfg_if! {
         mod hooks;
         mod merged_platform;
         mod migrations;
+        mod platform_sources;
         mod run_shim_directly;
         mod verbose_errors;
         mod volta_bypass;
+        mod volta_default;
         mod volta_install;
         mod volta_pin;
         mod volta_run;
         mod volta_uninstall;
+        mod volta_use;
     }
 }

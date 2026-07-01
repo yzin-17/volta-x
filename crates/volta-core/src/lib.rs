@@ -1,6 +1,7 @@
 //! The main implementation crate for the core of Volta.
 
 mod command;
+pub mod directory_platform;
 pub mod error;
 pub mod event;
 pub mod fs;
@@ -9,6 +10,7 @@ pub mod inventory;
 pub mod layout;
 pub mod log;
 pub mod monitor;
+pub mod node_version_file;
 pub mod platform;
 pub mod project;
 pub mod run;

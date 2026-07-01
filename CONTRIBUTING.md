@@ -1,1 +1,1 @@
-Please see https://docs.volta.sh/contributing/
+Please see https://github.com/yzin-17/volta-x for current Volta-X contribution guidance.

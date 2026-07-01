@@ -1,6 +1,5 @@
 use crate::support::sandbox::{
-    sandbox, DistroMetadata, NodeFixture, NpmFixture, PnpmFixture, Sandbox, Yarn1Fixture,
-    YarnBerryFixture,
+    sandbox, DistroMetadata, NpmFixture, PnpmFixture, Sandbox, Yarn1Fixture, YarnBerryFixture,
 };
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
@@ -34,89 +33,6 @@ fn platform_with_node_npm(node: &str, npm: &str) -> String {
 }}"#,
         node, npm
     )
-}
-
-const NODE_VERSION_INFO: &str = r#"[
-{"version":"v10.99.1040","npm":"6.2.26","lts": "Dubnium","files":["linux-x64","osx-x64-tar","win-x64-zip","win-x86-zip", "linux-arm64"]},
-{"version":"v9.27.6","npm":"5.6.17","lts": false,"files":["linux-x64","osx-x64-tar","win-x64-zip","win-x86-zip", "linux-arm64"]},
-{"version":"v8.9.10","npm":"5.6.7","lts": false,"files":["linux-x64","osx-x64-tar","win-x64-zip","win-x86-zip", "linux-arm64"]},
-{"version":"v6.19.62","npm":"3.10.1066","lts": false,"files":["linux-x64","osx-x64-tar","win-x64-zip","win-x86-zip", "linux-arm64"]}
-]
-"#;
-
-cfg_if::cfg_if! {
-    if #[cfg(target_os = "macos")] {
-        const NODE_VERSION_FIXTURES: [DistroMetadata; 4] = [
-            DistroMetadata {
-                version: "10.99.1040",
-                compressed_size: 273,
-                uncompressed_size: Some(0x0028_0000),
-            },
-            DistroMetadata {
-                version: "9.27.6",
-                compressed_size: 272,
-                uncompressed_size: Some(0x0028_0000),
-            },
-            DistroMetadata {
-                version: "8.9.10",
-                compressed_size: 272,
-                uncompressed_size: Some(0x0028_0000),
-            },
-            DistroMetadata {
-                version: "6.19.62",
-                compressed_size: 273,
-                uncompressed_size: Some(0x0028_0000),
-            },
-        ];
-    } else if #[cfg(target_os = "linux")] {
-        const NODE_VERSION_FIXTURES: [DistroMetadata; 4] = [
-            DistroMetadata {
-                version: "10.99.1040",
-                compressed_size: 273,
-                uncompressed_size: Some(0x0028_0000),
-            },
-            DistroMetadata {
-                version: "9.27.6",
-                compressed_size: 272,
-                uncompressed_size: Some(0x0028_0000),
-            },
-            DistroMetadata {
-                version: "8.9.10",
-                compressed_size: 270,
-                uncompressed_size: Some(0x0028_0000),
-            },
-            DistroMetadata {
-                version: "6.19.62",
-                compressed_size: 273,
-                uncompressed_size: Some(0x0028_0000),
-            },
-        ];
-    } else if #[cfg(target_os = "windows")] {
-        const NODE_VERSION_FIXTURES: [DistroMetadata; 4] = [
-            DistroMetadata {
-                version: "10.99.1040",
-                compressed_size: 1096,
-                uncompressed_size: None,
-            },
-            DistroMetadata {
-                version: "9.27.6",
-                compressed_size: 1068,
-                uncompressed_size: None,
-            },
-            DistroMetadata {
-                version: "8.9.10",
-                compressed_size: 1055,
-                uncompressed_size: None,
-            },
-            DistroMetadata {
-                version: "6.19.62",
-                compressed_size: 1056,
-                uncompressed_size: None,
-            },
-        ];
-    } else {
-        compile_error!("Unsupported target_os for tests (expected 'macos', 'linux', or 'windows').");
-    }
 }
 
 const YARN_1_VERSION_INFO: &str = r#"[
@@ -245,11 +161,10 @@ const NPM_VERSION_FIXTURES: [DistroMetadata; 3] = [
 ];
 
 #[test]
-fn install_node_informs_newer_npm() {
+fn install_node_does_not_overwrite_existing_default() {
     let s = sandbox()
         .platform(&platform_with_node_npm("8.9.10", "5.6.17"))
-        .node_available_versions(NODE_VERSION_INFO)
-        .distro_mocks::<NodeFixture>(&NODE_VERSION_FIXTURES)
+        .setup_node_binary("10.99.1040", "6.2.26", "")
         .env("VOLTA_LOGLEVEL", "info")
         .build();
 
@@ -257,17 +172,22 @@ fn install_node_informs_newer_npm() {
         s.volta("install node@10.99.1040"),
         execs()
             .with_status(ExitCode::Success as i32)
-            .with_stdout_contains("[..]this version of Node includes npm@6.2.26, which is higher than your default version (5.6.17).")
-            .with_stdout_contains("[..]`volta install npm@bundled`[..]")
+            .with_stdout_contains(
+                "[..]node@10.99.1040 is installed; existing default version was not changed[..]"
+            )
+    );
+
+    assert_eq!(
+        Sandbox::read_default_platform(),
+        platform_with_node_npm("8.9.10", "5.6.17")
     );
 }
 
 #[test]
-fn install_node_with_npm_hides_bundled_version() {
+fn install_node_with_existing_default_hides_bundled_version() {
     let s = sandbox()
         .platform(&platform_with_node_npm("8.9.10", "6.2.26"))
-        .node_available_versions(NODE_VERSION_INFO)
-        .distro_mocks::<NodeFixture>(&NODE_VERSION_FIXTURES)
+        .setup_node_binary("9.27.6", "5.6.17", "")
         .env("VOLTA_LOGLEVEL", "info")
         .build();
 
@@ -280,25 +200,7 @@ fn install_node_with_npm_hides_bundled_version() {
 }
 
 #[test]
-fn install_npm_bundled_clears_npm() {
-    let s = sandbox()
-        .platform(&platform_with_node_npm("8.9.10", "6.2.26"))
-        .node_npm_version_file("8.9.10", "5.6.7")
-        .build();
-
-    assert_that!(
-        s.volta("install npm@bundled"),
-        execs().with_status(ExitCode::Success as i32)
-    );
-
-    assert_eq!(
-        Sandbox::read_default_platform(),
-        platform_with_node("8.9.10")
-    );
-}
-
-#[test]
-fn install_npm_bundled_reports_info() {
+fn install_npm_bundled_does_not_overwrite_existing_default() {
     let s = sandbox()
         .platform(&platform_with_node_npm("8.9.10", "6.2.26"))
         .node_npm_version_file("8.9.10", "5.6.7")
@@ -309,7 +211,52 @@ fn install_npm_bundled_reports_info() {
         s.volta("install npm@bundled"),
         execs()
             .with_status(ExitCode::Success as i32)
+            .with_stdout_contains(
+                "[..]bundled npm is installed; existing default version was not changed[..]"
+            )
+    );
+
+    assert_eq!(
+        Sandbox::read_default_platform(),
+        platform_with_node_npm("8.9.10", "6.2.26")
+    );
+}
+
+#[test]
+fn install_npm_bundled_sets_default_when_no_custom_npm_exists() {
+    let s = sandbox()
+        .platform(&platform_with_node("8.9.10"))
+        .node_npm_version_file("8.9.10", "5.6.7")
+        .env("VOLTA_LOGLEVEL", "info")
+        .build();
+
+    assert_that!(
+        s.volta("install npm@bundled"),
+        execs()
+            .with_status(ExitCode::Success as i32)
             .with_stdout_contains("[..]set bundled npm (currently 5.6.7)[..]")
+    );
+}
+
+#[test]
+fn install_npm_sets_default_when_no_custom_npm_exists() {
+    let s = sandbox()
+        .platform(&platform_with_node("8.9.10"))
+        .npm_available_versions(NPM_VERSION_INFO)
+        .distro_mocks::<NpmFixture>(&NPM_VERSION_FIXTURES)
+        .env("VOLTA_LOGLEVEL", "info")
+        .build();
+
+    assert_that!(
+        s.volta("install npm@4.5.6"),
+        execs()
+            .with_status(ExitCode::Success as i32)
+            .with_stdout_contains("[..]installed and set npm@4.5.6 as default[..]")
+    );
+
+    assert_eq!(
+        Sandbox::read_default_platform(),
+        platform_with_node_npm("8.9.10", "4.5.6")
     );
 }
 
@@ -392,15 +339,14 @@ fn install_node_with_shadowed_binary() {
     const SCRIPT_FILENAME: &str = "node";
 
     let s = sandbox()
-        .node_available_versions(NODE_VERSION_INFO)
-        .distro_mocks::<NodeFixture>(&NODE_VERSION_FIXTURES)
+        .setup_node_binary("10.99.1040", "6.2.26", "")
         .env("VOLTA_LOGLEVEL", "info")
         .prepend_exec_dir_to_path()
         .executable_file(SCRIPT_FILENAME, "echo hello world")
         .build();
 
     assert_that!(
-        s.volta("install node"),
+        s.volta("install node@10.99.1040"),
         execs()
             .with_status(ExitCode::Success as i32)
             .with_stdout_contains("[..]is shadowed by another binary of the same name at [..]")

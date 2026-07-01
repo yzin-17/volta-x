@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 
-# This is the bootstrap Unix installer served by `https://get.volta.sh`.
+# This is the bootstrap Unix installer for GitHub release artifacts.
 # Its responsibility is to query the system to determine what OS (and in the
 # case of Linux, what OpenSSL version) the system has, and then proceed to
 # fetch and install the appropriate build of Volta.
 
+volta_repo() {
+  printf "%s" "${VOLTA_REPO:-${GITHUB_REPOSITORY:-yzin-17/volta-x}}"
+}
+
+volta_release_url() {
+  printf "https://github.com/%s/releases" "$(volta_repo)"
+}
+
 volta_get_latest_release() {
-  curl --silent https://volta.sh/latest-version
+  curl --silent --location --write-out '%{url_effective}' --output /dev/null "$(volta_release_url)/latest" | sed -E 's#.*/tag/v?##'
 }
 
 volta_eprintf() {
@@ -140,7 +148,7 @@ case $(uname) in
         exit 1
 esac
 
-VOLTA_INSTALLER="https://github.com/volta-cli/volta/releases/download/v${VOLTA_LATEST_VERSION}/volta-${VOLTA_LATEST_VERSION}-${VOLTA_OS}.sh"
+VOLTA_INSTALLER="$(volta_release_url)/download/v${VOLTA_LATEST_VERSION}/volta-install.sh"
 
 volta_info 'Fetching' "${VOLTA_PRETTY_OS} installer"
 

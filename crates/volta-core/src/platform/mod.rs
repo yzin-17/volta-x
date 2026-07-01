@@ -1,7 +1,9 @@
 use std::env;
 use std::fmt;
 
+use crate::directory_platform::DirectoryPlatforms;
 use crate::error::{ErrorKind, Fallible};
+use crate::node_version_file;
 use crate::session::Session;
 use crate::tool::{Node, Npm, Pnpm, Yarn};
 use crate::VOLTA_FEATURE_PNPM;
@@ -18,14 +20,23 @@ pub use image::Image;
 pub use system::System;
 
 /// The source with which a version is associated
-#[derive(Clone, Copy)]
-#[cfg_attr(test, derive(Eq, PartialEq, Debug))]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Source {
     /// Represents a version from the user default platform
     Default,
 
     /// Represents a version from a project manifest
     Project,
+
+    /// Represents a version from a directory platform configured by `volta use`
+    Directory,
+
+    /// Represents a version from a .nvmrc file
+    Nvmrc,
+
+    /// Represents a version from a .node-version file
+    NodeVersion,
 
     /// Represents a version from a pinned Binary platform
     Binary,
@@ -39,6 +50,9 @@ impl fmt::Display for Source {
         match self {
             Source::Default => write!(f, "default"),
             Source::Project => write!(f, "project"),
+            Source::Directory => write!(f, "directory"),
+            Source::Nvmrc => write!(f, "nvmrc"),
+            Source::NodeVersion => write!(f, "node-version"),
             Source::Binary => write!(f, "binary"),
             Source::CommandLine => write!(f, "command-line"),
         }
@@ -63,6 +77,17 @@ impl<T> Sourced<T> {
             value,
             source: Source::Project,
         }
+    }
+
+    pub fn with_directory(value: T) -> Self {
+        Sourced {
+            value,
+            source: Source::Directory,
+        }
+    }
+
+    pub fn with_source(value: T, source: Source) -> Self {
+        Sourced { value, source }
     }
 
     pub fn with_binary(value: T) -> Self {
@@ -242,33 +267,46 @@ pub struct Platform {
 impl Platform {
     /// Returns the user's currently active platform, if any
     ///
-    /// Active platform is determined by first looking at the Project Platform
+    /// Active platform is determined by layering configuration sources from
+    /// lowest to highest priority:
     ///
-    /// - If there is a project platform then we use it
-    ///   - If there is no pnpm/Yarn version in the project platform, we pull
-    ///     pnpm/Yarn from the default platform if available, and merge the two
-    ///     platforms into a final one
-    /// - If there is no Project platform, then we use the user Default Platform
+    /// - user default platform
+    /// - `.node-version`
+    /// - `.nvmrc`
+    /// - project platform configured by `volta pin`
+    /// - directory platform configured by `volta use`
+    ///
+    /// Higher-priority Node-only sources inherit npm, pnpm, and Yarn from
+    /// lower-priority sources when available.
     pub fn current(session: &mut Session) -> Fallible<Option<Self>> {
-        if let Some(mut platform) = session.project_platform()?.map(PlatformSpec::as_project) {
-            if platform.pnpm.is_none() {
-                platform.pnpm = session
-                    .default_platform()?
-                    .and_then(|default_platform| default_platform.pnpm.clone())
-                    .map(Sourced::with_default);
-            }
+        let default_platform = session.default_platform()?.map(PlatformSpec::as_default);
+        let directory =
+            dunce::canonicalize(std::env::current_dir().map_err(|_| build_path_error())?)
+                .map_err(|_| build_path_error())?;
 
-            if platform.yarn.is_none() {
-                platform.yarn = session
-                    .default_platform()?
-                    .and_then(|default_platform| default_platform.yarn.clone())
-                    .map(Sourced::with_default);
-            }
+        let node_version_platform = merge_node(
+            node_version_file::node_version_platform(&directory)?,
+            default_platform,
+        );
+        let nvmrc_platform = merge_node(
+            node_version_file::nvmrc_platform(&directory)?,
+            node_version_platform,
+        );
 
-            Ok(Some(platform))
+        let project_platform = if let Some(project_platform) = session.project_platform()? {
+            Some(merge_platform_spec(
+                project_platform,
+                Source::Project,
+                nvmrc_platform,
+            ))
         } else {
-            Ok(session.default_platform()?.map(PlatformSpec::as_default))
-        }
+            nvmrc_platform
+        };
+
+        Ok(DirectoryPlatforms::current()?
+            .find_for(&directory)
+            .map(|platform| platform.merge(project_platform.clone()))
+            .unwrap_or(project_platform))
     }
 
     /// Check out a `Platform` into a fully-realized `Image`
@@ -303,6 +341,93 @@ impl Platform {
     }
 }
 
+fn merge_node(node: Option<Sourced<Version>>, base: Option<Platform>) -> Option<Platform> {
+    match (node, base) {
+        (Some(node), base) => Some(Platform {
+            node,
+            npm: base.as_ref().and_then(|platform| platform.npm.clone()),
+            pnpm: base.as_ref().and_then(|platform| platform.pnpm.clone()),
+            yarn: base.as_ref().and_then(|platform| platform.yarn.clone()),
+        }),
+        (None, base) => base,
+    }
+}
+
+fn merge_platform_spec(spec: &PlatformSpec, source: Source, base: Option<Platform>) -> Platform {
+    Platform {
+        node: Sourced::with_source(spec.node.clone(), source),
+        npm: spec
+            .npm
+            .clone()
+            .map(|npm| Sourced::with_source(npm, source))
+            .or_else(|| base.as_ref().and_then(|platform| platform.npm.clone())),
+        pnpm: spec
+            .pnpm
+            .clone()
+            .map(|pnpm| Sourced::with_source(pnpm, source))
+            .or_else(|| base.as_ref().and_then(|platform| platform.pnpm.clone())),
+        yarn: spec
+            .yarn
+            .clone()
+            .map(|yarn| Sourced::with_source(yarn, source))
+            .or_else(|| base.as_ref().and_then(|platform| platform.yarn.clone())),
+    }
+}
+
 fn build_path_error() -> ErrorKind {
     ErrorKind::BuildPathError
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::{merge_node, merge_platform_spec, Platform, PlatformSpec, Source, Sourced};
+    use node_semver::Version;
+
+    fn version(version: &str) -> Version {
+        Version::parse(version).expect("valid version")
+    }
+
+    #[test]
+    fn node_only_sources_inherit_package_managers_from_base() {
+        let base = Platform {
+            node: Sourced::with_default(version("8.9.10")),
+            npm: Some(Sourced::with_default(version("4.5.6"))),
+            pnpm: Some(Sourced::with_default(version("6.34.0"))),
+            yarn: Some(Sourced::with_default(version("1.7.71"))),
+        };
+
+        let merged = merge_node(
+            Some(Sourced::with_source(version("10.99.1040"), Source::Nvmrc)),
+            Some(base),
+        )
+        .expect("merged platform");
+
+        assert_eq!(merged.node.value, version("10.99.1040"));
+        assert_eq!(merged.node.source, Source::Nvmrc);
+        assert_eq!(merged.npm.expect("npm").value, version("4.5.6"));
+        assert_eq!(merged.pnpm.expect("pnpm").value, version("6.34.0"));
+        assert_eq!(merged.yarn.expect("yarn").value, version("1.7.71"));
+    }
+
+    #[test]
+    fn project_platform_without_npm_inherits_npm_from_base() {
+        let spec = PlatformSpec {
+            node: version("6.19.62"),
+            npm: None,
+            pnpm: None,
+            yarn: None,
+        };
+        let base = Platform {
+            node: Sourced::with_default(version("8.9.10")),
+            npm: Some(Sourced::with_default(version("4.5.6"))),
+            pnpm: None,
+            yarn: None,
+        };
+
+        let merged = merge_platform_spec(&spec, Source::Project, Some(base));
+
+        assert_eq!(merged.node.value, version("6.19.62"));
+        assert_eq!(merged.node.source, Source::Project);
+        assert_eq!(merged.npm.expect("npm").value, version("4.5.6"));
+    }
 }

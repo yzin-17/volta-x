@@ -1,4 +1,5 @@
 pub(crate) mod completions;
+pub(crate) mod default;
 pub(crate) mod fetch;
 pub(crate) mod install;
 pub(crate) mod list;
@@ -6,11 +7,13 @@ pub(crate) mod pin;
 pub(crate) mod run;
 pub(crate) mod setup;
 pub(crate) mod uninstall;
+pub(crate) mod unuse;
 pub(crate) mod r#use;
 pub(crate) mod which;
 
 pub(crate) use self::which::Which;
 pub(crate) use completions::Completions;
+pub(crate) use default::Default;
 pub(crate) use fetch::Fetch;
 pub(crate) use install::Install;
 pub(crate) use list::List;
@@ -19,6 +22,7 @@ pub(crate) use r#use::Use;
 pub(crate) use run::Run;
 pub(crate) use setup::Setup;
 pub(crate) use uninstall::Uninstall;
+pub(crate) use unuse::Unuse;
 
 use volta_core::error::{ExitCode, Fallible};
 use volta_core::session::Session;
