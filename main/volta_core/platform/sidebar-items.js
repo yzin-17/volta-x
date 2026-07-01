@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["InheritOption","Source"],"fn":["build_path_error","merge_node","merge_platform_spec"],"mod":["image","system"],"struct":["CliPlatform","Image","Platform","PlatformSpec","Sourced","System"]};

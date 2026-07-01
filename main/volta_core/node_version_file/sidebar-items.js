@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["file_platform","find_ancestor_file","node_version_platform","nvmrc_platform","parse_node_version_file"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["is_inherited_npm"],"mod":["npm_version_serde"],"struct":["DirectoryPlatformSpec","DirectoryPlatforms","SerialDirectoryPlatform","SerialDirectoryPlatforms"]};
