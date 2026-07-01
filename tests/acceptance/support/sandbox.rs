@@ -129,21 +129,57 @@ impl FileBuilder {
 
 struct ShimBuilder {
     name: String,
+    kind: ShimKind,
+}
+
+enum ShimKind {
+    DefaultTool,
+    Package,
 }
 
 impl ShimBuilder {
-    fn new(name: String) -> ShimBuilder {
-        ShimBuilder { name }
+    fn new_default_tool(name: String) -> ShimBuilder {
+        ShimBuilder {
+            name,
+            kind: ShimKind::DefaultTool,
+        }
+    }
+
+    fn new_package(name: String) -> ShimBuilder {
+        ShimBuilder {
+            name,
+            kind: ShimKind::Package,
+        }
     }
 
     fn build(&self) {
-        #[cfg(windows)]
-        {
-            ok_or_panic! { fs::copy(shim_exe(), shim_file(&self.name)) };
-        }
+        match self.kind {
+            ShimKind::DefaultTool => {
+                #[cfg(windows)]
+                {
+                    ok_or_panic! { fs::copy(shim_exe(), default_shim_file(&self.name)) };
+                }
 
-        #[cfg(unix)]
-        ok_or_panic! { symlink_file(shim_exe(), shim_file(&self.name)) };
+                #[cfg(unix)]
+                ok_or_panic! { symlink_file(shim_exe(), package_shim_file(&self.name)) };
+            }
+            ShimKind::Package => {
+                #[cfg(windows)]
+                {
+                    let shim = package_shim_file(&self.name);
+                    let contents = format!(
+                        r#"@echo off
+"{}" run %~n0 %*
+"#,
+                        volta_exe().display()
+                    );
+                    ok_or_panic! { fs::write(shim, contents) };
+                }
+
+                #[cfg(unix)]
+                ok_or_panic! { symlink_file(shim_exe(), package_shim_file(&self.name)) };
+            }
+        }
     }
 }
 
@@ -322,9 +358,9 @@ impl SandboxBuilder {
             caches: vec![],
             path_dirs: vec![volta_bin_dir()],
             shims: vec![
-                ShimBuilder::new("npm".to_string()),
-                ShimBuilder::new("pnpm".to_string()),
-                ShimBuilder::new("yarn".to_string()),
+                ShimBuilder::new_default_tool("npm".to_string()),
+                ShimBuilder::new_default_tool("pnpm".to_string()),
+                ShimBuilder::new_default_tool("yarn".to_string()),
             ],
             has_exec_path: false,
         }
@@ -542,7 +578,7 @@ impl SandboxBuilder {
 
     /// Set a shim file for the sandbox (chainable)
     pub fn shim(mut self, name: &str) -> Self {
-        self.shims.push(ShimBuilder::new(name.to_string()));
+        self.shims.push(ShimBuilder::new_package(name.to_string()));
         self
     }
 
@@ -801,8 +837,20 @@ fn package_config_file(name: &str) -> PathBuf {
 fn binary_config_file(name: &str) -> PathBuf {
     user_dir().join("bins").join(format!("{}.json", name))
 }
-fn shim_file(name: &str) -> PathBuf {
+fn default_shim_file(name: &str) -> PathBuf {
     volta_bin_dir().join(format!("{}{}", name, env::consts::EXE_SUFFIX))
+}
+fn package_shim_file(name: &str) -> PathBuf {
+    cfg_if! {
+        if #[cfg(target_os = "windows")] {
+            volta_bin_dir().join(format!("{name}.cmd"))
+        } else {
+            volta_bin_dir().join(name)
+        }
+    }
+}
+fn is_default_tool_shim(name: &str) -> bool {
+    matches!(name, "npm" | "pnpm" | "yarn")
 }
 fn package_image_dir(name: &str) -> PathBuf {
     image_dir().join("packages").join(name)
@@ -921,7 +969,12 @@ impl Sandbox {
     /// Example:
     ///     assert_that(p.exec_shim("cowsay", "foo bar"), execs());
     pub fn exec_shim(&self, bin: &str, cmd: &str) -> ProcessBuilder {
-        let mut p = self.process(shim_file(bin));
+        let shim = if is_default_tool_shim(bin) {
+            default_shim_file(bin)
+        } else {
+            package_shim_file(bin)
+        };
+        let mut p = self.process(shim);
         split_and_add_args(&mut p, cmd);
         p
     }
@@ -966,7 +1019,7 @@ impl Sandbox {
         binary_config_file(name).exists()
     }
     pub fn shim_exists(name: &str) -> bool {
-        shim_file(name).exists()
+        package_shim_file(name).exists()
     }
     pub fn path_exists(path: &str) -> bool {
         sandbox_path(path).exists()
