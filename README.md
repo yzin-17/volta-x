@@ -40,7 +40,7 @@
 - Stable tool installation—no reinstalling on every Node upgrade!
 - Extensibility hooks for site-specific customization
 
-## Installing Volta
+## Installing Volta-X
 
 Install Volta-X from this fork's GitHub Releases:
 
@@ -50,7 +50,7 @@ curl https://raw.githubusercontent.com/yzin-17/volta-x/main/dev/unix/boot-instal
 
 The installer downloads release artifacts from `https://github.com/yzin-17/volta-x/releases`. Set `VOLTA_REPO=owner/repo` to use release artifacts from another fork.
 
-## Using Volta
+## Using Volta-X
 
 Use `volta install` to fetch tool versions. The first installed version of a tool becomes the default; later installs keep the existing default instead of silently replacing it.
 
